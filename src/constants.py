@@ -1,9 +1,26 @@
 from pathlib import Path
 
+
+# Режимы вывода результатов
+PRETTY = 'pretty'
+FILE = 'file'
+
+
+# URL-адреса и пути
 MAIN_DOC_URL = 'https://docs.python.org/3/'
-BASE_DIR = Path(__file__).parent
-DATETIME_FORMAT = '%Y-%m-%d_%H-%M-%S'
 PEP_URl = 'https://peps.python.org/'
+BASE_DIR = Path(__file__).parent
+LOGS_BASE_DIR = BASE_DIR / 'logs'
+DOWNLOADS_DIR = BASE_DIR / 'downloads'
+RESULTS_DIR = BASE_DIR / 'results'
+
+
+# Форматы даты и времени
+DATETIME_FORMAT = '%Y-%m-%d_%H-%M-%S'
+DT_FORMAT = '%d.%m.%Y %H:%M:%S'
+
+
+# Статусы PEP
 EXPECTED_STATUS = {
     'A': ('Active', 'Accepted'),
     'D': ('Deferred',),
@@ -14,3 +31,8 @@ EXPECTED_STATUS = {
     'W': ('Withdrawn',),
     '': ('Draft', 'Active'),
 }
+
+
+# Настройки логирования
+LOG_FORMAT = '"%(asctime)s - [%(levelname)s] - %(message)s"'
+LOGS_FILE = LOGS_BASE_DIR / 'parser.log'

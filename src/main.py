@@ -1,23 +1,28 @@
+import logging
 import re
 from urllib.parse import urljoin
 
 import requests_cache
 from bs4 import BeautifulSoup
 from tqdm import tqdm
-import logging
 
 from configs import configure_argument_parser, configure_logging
-from constants import BASE_DIR, EXPECTED_STATUS, MAIN_DOC_URL, PEP_URl
+from constants import DOWNLOADS_DIR, EXPECTED_STATUS, MAIN_DOC_URL, PEP_URl
+from exceptions import SectionNotFoundException
 from outputs import control_output
 from utils import get_response, find_tag
 
 
-def whats_new(session):
-    whats_new_url = urljoin(MAIN_DOC_URL, 'whatsnew/')
-    response = get_response(session, whats_new_url)
+def make_soup(session, url):
+    response = get_response(session, url)
     if response is None:
         return
-    soup = BeautifulSoup(response.text, features='lxml')
+    return BeautifulSoup(response.text, features='lxml')
+
+
+def whats_new(session):
+    whats_new_url = urljoin(MAIN_DOC_URL, 'whatsnew/')
+    soup = make_soup(session, whats_new_url)
 
     main_div = find_tag(soup, 'section', attrs={'id': 'what-s-new-in-python'})
     div_with_ul = find_tag(main_div, 'div', attrs={'class': 'toctree-wrapper'})
@@ -29,10 +34,7 @@ def whats_new(session):
         version_a_tag = find_tag(section, 'a')
         href = version_a_tag['href']
         version_link = urljoin(whats_new_url, href)
-        response = get_response(session, version_link)
-        if response is None:
-            continue
-        soup = BeautifulSoup(response.text, features='lxml')
+        soup = make_soup(session, version_link)
         h1 = find_tag(soup, 'h1')
         dl = find_tag(soup, 'dl')
         dl_text = dl.text.replace('\n', ' ')
@@ -42,10 +44,7 @@ def whats_new(session):
 
 
 def latest_versions(session):
-    response = get_response(session, MAIN_DOC_URL)
-    if response is None:
-        return
-    soup = BeautifulSoup(response.text, 'lxml')
+    soup = make_soup(session, MAIN_DOC_URL)
 
     sidebar = find_tag(soup, 'div', attrs={'class': {'sphinxsidebarwrapper'}})
     ul_tags = sidebar.find_all('ul')
@@ -54,7 +53,7 @@ def latest_versions(session):
             a_tags = ul.find_all('a')
             break
     else:
-        raise Exception('Ничего не нашлось')
+        raise SectionNotFoundException
     results = [('Ссылка на документацию', 'Версия', 'Статус')]
     pattern = r'Python (?P<version>\d\.\d+) \((?P<status>.*)\)'
     for a_tag in a_tags:
@@ -73,16 +72,13 @@ def latest_versions(session):
 
 def download(session):
     downloads_url = urljoin(MAIN_DOC_URL, 'download.html')
-    response = get_response(session, downloads_url)
-    if response is None:
-        return
-    soup = BeautifulSoup(response.text, features='lxml')
+    soup = make_soup(session, downloads_url)
 
     pdf_a4_tag = find_tag(soup, 'a', {'href': re.compile(r'.+pdf-a4\.zip$')})
     pdf_a4_link = pdf_a4_tag['href']
     archive_url = urljoin(downloads_url, pdf_a4_link)
     filename = archive_url.split('/')[-1]
-    downloads_dir = BASE_DIR / 'downloads'
+    downloads_dir = DOWNLOADS_DIR
     downloads_dir.mkdir(exist_ok=True)
     archive_path = downloads_dir / filename
 
@@ -93,10 +89,7 @@ def download(session):
 
 
 def pep(session):
-    response = get_response(session, PEP_URl)
-    if response is None:
-        return
-    soup = BeautifulSoup(response.text, features='lxml')
+    soup = make_soup(session, PEP_URl)
     pep_statuses = list(soup.find_all('abbr'))
     pep_statuses = [tag for tag in pep_statuses
                     if tag.text not in ['Active', 'Informational']]
@@ -105,30 +98,24 @@ def pep(session):
     pep_links = pep_links[::2]
     results = [('Статус', 'Количество')]
     status_sum = {}
-    for pep_status, pep_link in zip(pep_statuses, pep_links):
+    for i in tqdm(range(len(pep_statuses))):
+        pep_status = pep_statuses[i]
+        pep_link = pep_links[i]
         if len(pep_status.text) == 2:
             main_page_status = EXPECTED_STATUS[pep_status.text[1]]
         else:
             main_page_status = EXPECTED_STATUS['']
         pep_link = pep_link['href']
         pep_page_url = urljoin(PEP_URl, pep_link)
-        page_response = get_response(session, pep_page_url)
-        if page_response is None:
-            return
-        page_soup = BeautifulSoup(page_response.text, features='lxml')
+        page_soup = make_soup(session, pep_page_url)
         page_status = find_tag(page_soup, 'abbr').text
         if page_status not in main_page_status:
             logging.info(pep_link)
             logging.info(f'Статус в карточке {page_status}')
             logging.info(f'Ожидаемые статусы: {main_page_status}')
-        if page_status in status_sum.keys():
-            status_sum[page_status] += 1
-        else:
-            status_sum[page_status] = 1
-    total_sum = 0
-    for status in status_sum:
-        results.append((status, status_sum[status]))
-        total_sum += status_sum[status]
+        status_sum[page_status] = status_sum(page_status, 0) + 1
+    results.extend(status_sum.items())
+    total_sum = sum(status_sum.values())
     results.append(('Total', total_sum))
     return results
 
@@ -142,19 +129,22 @@ MODE_TO_FUNCTION = {
 
 
 def main():
-    configure_logging()
-    logging.info('Парсер запущен!')
-    arg_parser = configure_argument_parser(MODE_TO_FUNCTION.keys())
-    args = arg_parser.parse_args()
-    logging.info(f'Аргументы командной строки: {args}')
-    session = requests_cache.CachedSession()
-    if args.clear_cache:
-        session.cache.clear()
-    parser_mode = args.mode
-    results = MODE_TO_FUNCTION[parser_mode](session)
+    try:
+        configure_logging()
+        logging.info('Парсер запущен!')
+        arg_parser = configure_argument_parser(MODE_TO_FUNCTION.keys())
+        args = arg_parser.parse_args()
+        logging.info(f'Аргументы командной строки: {args}')
+        session = requests_cache.CachedSession()
+        if args.clear_cache:
+            session.cache.clear()
+        parser_mode = args.mode
+        results = MODE_TO_FUNCTION[parser_mode](session)
 
-    if results is not None:
-        control_output(results, args)
+        if results is not None:
+            control_output(results, args)
+    except Exception as error:
+        logging.exception(f'Критическая ошибка: {str(error)}')
     logging.info('Парсер завершил работу.')
 
 
