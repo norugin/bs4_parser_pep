@@ -36,3 +36,5 @@ EXPECTED_STATUS = {
 LOG_FORMAT = '"%(asctime)s - [%(levelname)s] - %(message)s"'
 LOGS_CONST = 'logs'
 LOGS_FILE = 'parser.log'
+LOG_DIR = BASE_DIR / LOGS_CONST
+LOG_FILE = BASE_DIR / LOGS_FILE

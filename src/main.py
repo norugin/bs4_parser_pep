@@ -3,7 +3,6 @@ import re
 from urllib.parse import urljoin
 
 import requests_cache
-from bs4 import BeautifulSoup
 from tqdm import tqdm
 
 from configs import configure_argument_parser, configure_logging
@@ -11,20 +10,13 @@ from constants import (BASE_DIR, DOWNLOADS_DIR,
                        EXPECTED_STATUS, MAIN_DOC_URL, PEP_URl)
 from exceptions import SectionNotFoundException
 from outputs import control_output
-from utils import get_response, find_tag
-
-
-def make_soup(session, url):
-    response = get_response(session, url)
-    if response is None:
-        return
-    return BeautifulSoup(response.text, features='lxml')
+from utils import find_tag, make_soup
 
 
 def whats_new(session):
+    errors = []
     whats_new_url = urljoin(MAIN_DOC_URL, 'whatsnew/')
     soup = make_soup(session, whats_new_url)
-
     main_div = find_tag(soup, 'section', attrs={'id': 'what-s-new-in-python'})
     div_with_ul = find_tag(main_div, 'div', attrs={'class': 'toctree-wrapper'})
     sections_by_python = div_with_ul.find_all('li',
@@ -35,11 +27,17 @@ def whats_new(session):
         version_a_tag = find_tag(section, 'a')
         href = version_a_tag['href']
         version_link = urljoin(whats_new_url, href)
-        soup = make_soup(session, version_link)
+        try:
+            soup = make_soup(session, version_link)
+        except ConnectionError as e:
+            errors.append(f'Ошибка при обработке {version_link}: {e}')
+            continue
         h1 = find_tag(soup, 'h1')
         dl = find_tag(soup, 'dl')
         dl_text = dl.text.replace('\n', ' ')
         results.append((version_link, h1.text, dl_text))
+    for error in errors:
+        logging.info(error)
 
     return results
 
@@ -54,7 +52,8 @@ def latest_versions(session):
             a_tags = ul.find_all('a')
             break
     else:
-        raise SectionNotFoundException
+        raise SectionNotFoundException('Не найден раздел "All versions"'
+                                       ' в боковой панели документации.')
     results = [('Ссылка на документацию', 'Версия', 'Статус')]
     pattern = r'Python (?P<version>\d\.\d+) \((?P<status>.*)\)'
     for a_tag in a_tags:
@@ -90,6 +89,7 @@ def download(session):
 
 
 def pep(session):
+    errors = []
     soup = make_soup(session, PEP_URl)
     pep_statuses = list(soup.find_all('abbr'))
     pep_statuses = [tag for tag in pep_statuses
@@ -108,16 +108,22 @@ def pep(session):
             main_page_status = EXPECTED_STATUS['']
         pep_link = pep_link['href']
         pep_page_url = urljoin(PEP_URl, pep_link)
-        page_soup = make_soup(session, pep_page_url)
+        try:
+            page_soup = make_soup(session, pep_page_url)
+        except ConnectionError as e:
+            errors.append(f'Ошибка при обработке {pep_page_url}: {e}')
+            continue
         page_status = find_tag(page_soup, 'abbr').text
         if page_status not in main_page_status:
-            logging.info(pep_link)
-            logging.info(f'Статус в карточке {page_status}')
-            logging.info(f'Ожидаемые статусы: {main_page_status}')
+            errors.append(pep_link)
+            errors.append(f'Статус в карточке {page_status}')
+            errors.append(f'Ожидаемые статусы: {main_page_status}')
         status_sum[page_status] = status_sum.get(page_status, 0) + 1
     results.extend(status_sum.items())
     total_sum = sum(status_sum.values())
     results.append(('Total', total_sum))
+    for error in errors:
+        logging.info(error)
     return results
 
 

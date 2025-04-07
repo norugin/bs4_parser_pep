@@ -1,13 +1,15 @@
 import logging
 
+from bs4 import BeautifulSoup
 from requests import RequestException
+
 from exceptions import ParserFindTagException
 
 
-def get_response(session, url):
+def get_response(session, url, encoding='utf-8'):
     try:
         response = session.get(url)
-        response.encoding = 'utf-8'
+        response.encoding = encoding
         return response
     except RequestException:
         logging.exception(
@@ -23,3 +25,8 @@ def find_tag(soup, tag, attrs=None):
         logging.error(error_msg, stack_info=True)
         raise ParserFindTagException(error_msg)
     return searched_tag
+
+
+def make_soup(session, url):
+    response = get_response(session, url)
+    return BeautifulSoup(response.text, features='lxml')
