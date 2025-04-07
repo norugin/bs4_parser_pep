@@ -7,7 +7,8 @@ from bs4 import BeautifulSoup
 from tqdm import tqdm
 
 from configs import configure_argument_parser, configure_logging
-from constants import DOWNLOADS_DIR, EXPECTED_STATUS, MAIN_DOC_URL, PEP_URl
+from constants import (BASE_DIR, DOWNLOADS_DIR,
+                       EXPECTED_STATUS, MAIN_DOC_URL, PEP_URl)
 from exceptions import SectionNotFoundException
 from outputs import control_output
 from utils import get_response, find_tag
@@ -78,7 +79,7 @@ def download(session):
     pdf_a4_link = pdf_a4_tag['href']
     archive_url = urljoin(downloads_url, pdf_a4_link)
     filename = archive_url.split('/')[-1]
-    downloads_dir = DOWNLOADS_DIR
+    downloads_dir = BASE_DIR / DOWNLOADS_DIR
     downloads_dir.mkdir(exist_ok=True)
     archive_path = downloads_dir / filename
 
@@ -113,7 +114,7 @@ def pep(session):
             logging.info(pep_link)
             logging.info(f'Статус в карточке {page_status}')
             logging.info(f'Ожидаемые статусы: {main_page_status}')
-        status_sum[page_status] = status_sum(page_status, 0) + 1
+        status_sum[page_status] = status_sum.get(page_status, 0) + 1
     results.extend(status_sum.items())
     total_sum = sum(status_sum.values())
     results.append(('Total', total_sum))

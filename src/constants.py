@@ -10,9 +10,8 @@ FILE = 'file'
 MAIN_DOC_URL = 'https://docs.python.org/3/'
 PEP_URl = 'https://peps.python.org/'
 BASE_DIR = Path(__file__).parent
-LOGS_BASE_DIR = BASE_DIR / 'logs'
-DOWNLOADS_DIR = BASE_DIR / 'downloads'
-RESULTS_DIR = BASE_DIR / 'results'
+DOWNLOADS_DIR = 'downloads'
+RESULTS_DIR = 'results'
 
 
 # Форматы даты и времени
@@ -35,4 +34,5 @@ EXPECTED_STATUS = {
 
 # Настройки логирования
 LOG_FORMAT = '"%(asctime)s - [%(levelname)s] - %(message)s"'
-LOGS_FILE = LOGS_BASE_DIR / 'parser.log'
+LOGS_CONST = 'logs'
+LOGS_FILE = 'parser.log'
