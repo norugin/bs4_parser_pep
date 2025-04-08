@@ -11,11 +11,8 @@ def get_response(session, url, encoding='utf-8'):
         response = session.get(url)
         response.encoding = encoding
         return response
-    except RequestException:
-        logging.exception(
-            f'Возникла ошибка при загрузке страницы {url}',
-            stack_info=True
-        )
+    except RequestException as e:
+        raise ConnectionError(f'Ошибка при загрузке страницы {url}: {e}')
 
 
 def find_tag(soup, tag, attrs=None):
@@ -27,6 +24,6 @@ def find_tag(soup, tag, attrs=None):
     return searched_tag
 
 
-def make_soup(session, url):
+def make_soup(session, url, parser='lxml'):
     response = get_response(session, url)
-    return BeautifulSoup(response.text, features='lxml')
+    return BeautifulSoup(response.text, features=parser)
